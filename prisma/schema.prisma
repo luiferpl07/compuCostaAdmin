@@ -1,0 +1,158 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider     = "mysql"
+  url          = env("DATABASE_URL")
+  relationMode = "prisma"
+}
+
+model banner {
+  id        Int      @id @default(autoincrement())
+  title     String
+  imageUrl  String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model categoria {
+  id          Int       @id @default(autoincrement())
+  nombre      String
+  descripcion String?   @db.Text
+  slug        String    @unique(map: "Categoria_slug_key")
+  imagen      String?
+  padre_id    Int?
+  productos   productocategoria[]
+
+  @@index([padre_id], map: "Categoria_padre_id_idx")
+}
+
+model marca {
+  id        Int       @id @default(autoincrement())
+  nombre    String
+  imagen    String?
+  productos productomarca[]
+}
+
+model color {
+  id        Int       @id @default(autoincrement())
+  nombre    String    @unique(map: "Color_nombre_key")
+  codigo_hex String   @unique(map: "Color_codigo_hex_key")
+  productos  productocolor[]
+}
+
+model imagenproducto {
+  id              Int      @id @default(autoincrement())
+  id_producto     String
+  url             String
+  alt_text        String?   // Texto alternativo
+  orden           Int       @default(0)
+  es_principal    Boolean   @default(false)
+  created_at      DateTime  @default(now())
+  producto        producto  @relation(fields: [id_producto], references: [id])
+  @@index([id_producto], map: "ImagenProducto_id_producto_erp_idx")
+}
+
+model pedido {
+  id                    String   @id
+  id_pedido_erp         String   @unique(map: "Pedido_id_pedido_erp_key")
+  estado                String
+  total                 Decimal  @db.Decimal(10, 2)
+  fecha_pedido          DateTime
+  metadatos_adicionales String?  @db.LongText
+}
+
+model producto {
+  id                String           @id
+  nombre            String
+  precio            Decimal          @db.Decimal(10, 2)
+  descripcionLarga  String?          @db.Text
+  descripcionCorta  String?          @db.Text
+  slug              String           @unique(map: "Producto_slug_key")
+  destacado         Boolean          @default(false)
+  cantidad          Int              @default(0) // quantity
+  vistaGeneral      String?          @db.Text // overView
+  enStock           Boolean          @default(true) // isStock
+  esNuevo           Boolean          @default(false) // isNew
+  precioDescuento   Decimal?         @db.Decimal(10, 2) // discountedPrice
+  puntuacionPromedio Float?          @default(0.0) // rating (promedio de calificaciones)
+  reseñasCount      Int              @default(0) // reviews (contador)
+  created_at        DateTime         @default(now())
+  updated_at        DateTime
+  categorias        productocategoria[]
+  colores           productocolor[]
+  marca             productomarca[]
+  imagenes          imagenproducto[]
+  reviews           review[]
+}
+
+
+model productocategoria {
+  id_producto String
+  id_categoria    Int
+
+  producto        producto @relation(fields: [id_producto], references: [id])
+  categoria       categoria @relation(fields: [id_categoria], references: [id])
+
+  @@id([id_producto, id_categoria])
+  @@index([id_categoria], map: "ProductoCategoria_id_categoria_idx")
+  @@index([id_producto], map: "ProductoCategoria_id_producto_erp_idx")
+}
+
+model productomarca {
+  id_producto String
+  id_marca        Int
+
+  producto        producto @relation(fields: [id_producto], references: [id])
+  marca           marca    @relation(fields: [id_marca], references: [id])
+
+  @@id([id_producto, id_marca])
+  @@index([id_marca], map: "ProductoMarca_id_marca_idx")
+  @@index([id_producto], map: "ProductoMarca_id_producto_erp_idx")
+}
+
+model productocolor {
+  id_producto String
+  id_color        Int
+
+  producto        producto @relation(fields: [id_producto], references: [id])
+  color           color    @relation(fields: [id_color], references: [id])
+
+  @@id([id_producto, id_color])
+  @@index([id_color], map: "ProductoColor_id_color_idx")
+  @@index([id_producto], map: "ProductoColor_id_producto_erp_idx")
+}
+
+model review {
+  id              Int      @id @default(autoincrement())
+  id_producto     String
+  nombre_cliente  String
+  calificacion    Int      // Validar rango (1-5) desde el backend
+  comentario      String?  @db.Text
+  fecha_review    DateTime @default(now())
+  aprobado        Boolean  @default(false)
+  producto        producto @relation(fields: [id_producto], references: [id])
+
+  @@index([id_producto], map: "Review_id_producto_erp_idx")
+}
+
+model Usuario {
+  id          String   @id
+  primerNombre String
+  apellido    String
+  correo      String   @unique
+  direccion   Direccion? @relation(fields: [direccionId], references: [id])
+  direccionId Int?    @unique // Campo único
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+}
+
+model Direccion {
+  id          Int      @id @default(autoincrement())
+  calle       String
+  ciudad      String
+  pais        String
+  usuario     Usuario? @relation
+  usuarioId   String?  // Esto ahora se gestiona de manera opcional
+}
