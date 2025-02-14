@@ -29,12 +29,12 @@ model categoria {
 }
 
 model marca {
-  id        Int       @id @default(autoincrement())
+  id        Int       @id @default(autoincrement())  
+  idmarca   Int       @unique // Nuevo campo para almacenar el ID de la API externa
   nombre    String
   imagen    String?
   productos productomarca[]
 }
-
 model color {
   id        Int       @id @default(autoincrement())
   nombre    String    @unique(map: "Color_nombre_key")
@@ -44,13 +44,15 @@ model color {
 
 model imagenproducto {
   id              Int      @id @default(autoincrement())
-  id_producto     String
+  id_producto     String   
   url             String
-  alt_text        String?   // Texto alternativo
+  alt_text        String?
   orden           Int       @default(0)
   es_principal    Boolean   @default(false)
   created_at      DateTime  @default(now())
-  producto        producto  @relation(fields: [id_producto], references: [id])
+  
+  producto        producto  @relation(fields: [id_producto], references: [idproducto], onDelete: Cascade)
+  
   @@index([id_producto], map: "ImagenProducto_id_producto_erp_idx")
 }
 
@@ -64,32 +66,32 @@ model pedido {
 }
 
 model producto {
-  id                String           @id
-  nombre            String
-  precio            Decimal          @db.Decimal(10, 2)
-  descripcionLarga  String?          @db.Text
-  descripcionCorta  String?          @db.Text
-  slug              String           @unique(map: "Producto_slug_key")
-  destacado         Boolean          @default(false)
-  cantidad          Int              @default(0) // quantity
-  vistaGeneral      String?          @db.Text // overView
-  enStock           Boolean          @default(true) // isStock
-  esNuevo           Boolean          @default(false) // isNew
-  precioDescuento   Decimal?         @db.Decimal(10, 2) // discountedPrice
-  puntuacionPromedio Float?          @default(0.0) // rating (promedio de calificaciones)
-  reseñasCount      Int              @default(0) // reviews (contador)
-  created_at        DateTime         @default(now())
-  updated_at        DateTime
+  id                Int      @id @default(autoincrement())
+  idproducto        String   @unique  // ID en la API externa
+  nombreproducto    String
+  lista1            Decimal? @db.Decimal(10, 2)
+  lista2            Decimal? @db.Decimal(10, 2) // Precio
+  porciva           Decimal? @db.Decimal(5, 2)  // Porcentaje IVA
+  ivaincluido       String?  @db.Char(1)  // "S" o "N"
+  descripcionLarga  String?  @db.Text
+  descripcionCorta  String?  @db.Text
+  slug              String?  @unique
+  destacado         Boolean  @default(false)
+  cantidad          Int      @default(0)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  // Relaciones
   categorias        productocategoria[]
   colores           productocolor[]
   marca             productomarca[]
   imagenes          imagenproducto[]
-  reviews           review[]
+  reviews           review[]  // 🔹 Agregar esta línea (Relación inversa con `review`)
 }
 
 
 model productocategoria {
-  id_producto String
+  id_producto Int
   id_categoria    Int
 
   producto        producto @relation(fields: [id_producto], references: [id])
@@ -101,7 +103,7 @@ model productocategoria {
 }
 
 model productomarca {
-  id_producto String
+  id_producto Int
   id_marca        Int
 
   producto        producto @relation(fields: [id_producto], references: [id])
@@ -113,7 +115,7 @@ model productomarca {
 }
 
 model productocolor {
-  id_producto String
+  id_producto Int
   id_color        Int
 
   producto        producto @relation(fields: [id_producto], references: [id])
@@ -126,7 +128,7 @@ model productocolor {
 
 model review {
   id              Int      @id @default(autoincrement())
-  id_producto     String
+  id_producto     Int
   nombre_cliente  String
   calificacion    Int      // Validar rango (1-5) desde el backend
   comentario      String?  @db.Text

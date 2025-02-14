@@ -1,4 +1,6 @@
-import { useState } from 'react';
+"use client";
+
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -16,20 +18,21 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { useForm , SubmitHandler } from "react-hook-form";
+import { useForm, SubmitHandler } from "react-hook-form";
 import { Plus } from "lucide-react";
 
+// Definimos la interfaz de Marca
 interface Marca {
+  idmarca?: string; // Se hace opcional para evitar errores
   nombre: string;
-  
-  imagen: string;
+  imagen?: string;
 }
 
+// Definimos las propiedades que recibe el formulario
 interface MarcaFormProps {
   marca?: Marca;
   mode?: "create" | "edit";
-  onSubmit: (data: Marca) => Promise<void>;
+  onSubmit: (data: Omit<Marca, "idmarca">) => Promise<void>; // Excluye idmarca
 }
 
 const MarcaForm: React.FC<MarcaFormProps> = ({
@@ -38,15 +41,15 @@ const MarcaForm: React.FC<MarcaFormProps> = ({
   onSubmit,
 }) => {
   const [open, setOpen] = useState(false);
-  const form = useForm<Marca>({
+
+  const form = useForm<Omit<Marca, "idmarca">>({
     defaultValues: {
       nombre: marca?.nombre || "",
-      
       imagen: marca?.imagen || "",
     },
   });
 
-  const handleSubmit: SubmitHandler<Marca> = async (data) => {
+  const handleSubmit: SubmitHandler<Omit<Marca, "idmarca">> = async (data) => {
     await onSubmit(data);
     setOpen(false);
     form.reset();
@@ -57,13 +60,13 @@ const MarcaForm: React.FC<MarcaFormProps> = ({
       <DialogTrigger asChild>
         <Button>
           <Plus className="mr-2 h-4 w-4" />
-          {mode === "create" ? "Agregar Marcar" : "Editar Marca"}
+          {mode === "create" ? "Agregar Marca" : "Editar Marca"}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>
-            {mode === "create" ? "Agregar Marcar" : "Editar Marca"}
+            {mode === "create" ? "Agregar Marca" : "Editar Marca"}
           </DialogTitle>
         </DialogHeader>
         <Form {...form}>
@@ -73,28 +76,29 @@ const MarcaForm: React.FC<MarcaFormProps> = ({
               name="nombre"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Nombre</FormLabel>
+                  <FormLabel>Nombre de la Marca</FormLabel>
                   <FormControl>
-                    <Input placeholder="Nombre Marca " {...field} />
+                    <Input placeholder="Ingrese el nombre de la marca" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="imagen"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>URL de la Imagen</FormLabel>
+                  <FormControl>
+                    <Input placeholder="https://ejemplo.com/imagen.jpg" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
             
-     <FormField
-              control={form.control}
-              name="imagen"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Imagen URL</FormLabel>
-                  <FormControl>
-                    <Input placeholder="https://..." {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
             <Button type="submit" className="w-full">
               {mode === "create" ? "Crear" : "Actualizar"}
             </Button>

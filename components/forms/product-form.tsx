@@ -1,14 +1,9 @@
-"use client"
+"use client";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Form,
   FormControl,
@@ -26,24 +21,17 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { toast } from "sonner";
-import { ArrowLeft, X } from "lucide-react";
-import { slugify } from "@/lib/utils";
-
-
-interface ImagenProducto {
-  url: string;
-  orden: number;
-  esPrincipal: boolean;
-  altText?: string;
-}
+import { X } from "lucide-react";
 
 interface Marca {
   id: number;
+  idmarca: number; 
   nombre: string;
 }
 
@@ -57,30 +45,34 @@ interface Color {
   nombre: string;
   codigoHex: string;
 }
+
+interface ImageData {
+  url: string;
+  file?: File;
+  previewUrl: string;
+}
+
 const formSchema = z.object({
-  id: z.string().min(1, "ID is required"),
-  nombre: z.string().min(1, "Name is required"),
-  precio: z.string().min(1, "Price is required"),
+  idproducto: z.string().min(1, "ID del producto es obligatorio"),
+  nombreproducto: z.string().min(1, "Nombre del producto es obligatorio"),
+  lista1: z.string().min(1, "El precio es obligatorio"),
+  lista2: z.string().optional(),
+  porciva: z.string().optional(),
+  ivaincluido: z.enum(["S", "N"]).default("N"),
   descripcionLarga: z.string().optional(),
   descripcionCorta: z.string().optional(),
-  slug: z.string().min(1, "Slug is required"),
+  slug: z.string().min(1, "Slug es obligatorio"),
   destacado: z.boolean().default(false),
-  // Nuevos campos
-  codigoBase: z.string().optional(),
-  cantidad: z.number().min(0, "Quantity must be positive").default(0),
-  vistaGeneral: z.string().optional(),
-  enStock: z.boolean().default(true),
-  esNuevo: z.boolean().default(false),
-  precioDescuento: z.string().optional(),
-  // Campos relacionales existentes
+  cantidad: z.number().min(0, "Cantidad debe ser un número positivo").default(0),
   categoriaIds: z.array(z.number()),
   colorIds: z.array(z.number()),
   marcaIds: z.array(z.number()),
-  imagenes: z.array(z.object({
+  imagenes: z.array(z.object({ 
     url: z.string(),
     orden: z.number(),
-    esPrincipal: z.boolean()
-  })).optional()
+    esPrincipal: z.boolean(),
+    altText: z.string().optional()
+  })).optional(),
 });
 
 type ProductFormValues = z.infer<typeof formSchema>;
@@ -89,74 +81,50 @@ interface ProductFormProps {
   initialData?: ProductFormValues;
 }
 
-// Función para subir imágenes al servidor
-const saveImageLocally = async (file: File, productId: string): Promise<string> => {
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('productId', productId);
-
-  const response = await fetch('/api/upload', {
-    method: 'POST',
-    body: formData,
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to upload image');
-  }
-
-  const data = await response.json();
-  return data.path; // Devuelve la ruta de la imagen subida
-};
-
 export default function ProductForm({ initialData }: ProductFormProps) {
-  const [existingImages, setExistingImages] = useState<ImagenProducto[]>(
-    initialData?.imagenes || []
-  );
-  const [newImages, setNewImages] = useState<File[]>([]);
-  const [imagenPrincipal, setImagenPrincipal] = useState<string | null>(
-    initialData?.imagenes?.find(img => img.esPrincipal)?.url || null
-  );
-  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+  const [images, setImages] = useState<ImageData[]>([]);
+  const [imageUrl, setImageUrl] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [colores, setColores] = useState<Color[]>([]);
   const [marcas, setMarcas] = useState<Marca[]>([]);
-  const [imagenes, setImagenes] = useState<File[]>([]);
- 
-  const router = useRouter();
+  const [imagenPrincipal, setImagenPrincipal] = useState<string | null>(null);
 
   const form = useForm<ProductFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: initialData || {
-      id: "",
-      nombre: "",
-      precio: "",
+      idproducto: "",
+      nombreproducto: "",
+      lista1: "",
+      lista2: "",
+      porciva: "",
+      ivaincluido: "N",
       descripcionLarga: "",
       descripcionCorta: "",
       slug: "",
       destacado: false,
-      // Nuevos campos
-      codigoBase: "",
       cantidad: 0,
-      vistaGeneral: "",
-      enStock: true,
-      esNuevo: false,
-      precioDescuento: "",
-      // Campos relacionales existentes
       categoriaIds: [],
       colorIds: [],
       marcaIds: [],
-      imagenes: []
+      
     },
   });
 
   useEffect(() => {
-    const subscription = form.watch((value, { name }) => {
-      if (name === "nombre") {
-        form.setValue("slug", slugify(value.nombre || ""));
+    if (initialData?.imagenes) {
+      setImages(initialData.imagenes.map(img => ({
+        url: img.url,
+        previewUrl: img.url
+      })));
+      
+      const principalImage = initialData.imagenes.find(img => img.esPrincipal);
+      if (principalImage) {
+        setImagenPrincipal(principalImage.url);
       }
-    });
-    return () => subscription.unsubscribe();
-  }, [form]);
+    }
+  }, [initialData]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -164,158 +132,224 @@ export default function ProductForm({ initialData }: ProductFormProps) {
         const [categoriasRes, coloresRes, marcasRes] = await Promise.all([
           fetch("/api/categories"),
           fetch("/api/colors"),
-          fetch("/api/marcas")
+          fetch("/api/marcas"),
         ]);
-        
+  
         const categoriasData = await categoriasRes.json();
         const coloresData = await coloresRes.json();
         const marcasData = await marcasRes.json();
-        
+  
+        let marcasArray = marcasData;
+        if (marcasData && typeof marcasData === 'object' && !Array.isArray(marcasData)) {
+          if (marcasData.marcas) {
+            marcasArray = marcasData.marcas;
+          } else {
+            marcasArray = Object.values(marcasData);
+          }
+        }
+  
         setCategorias(categoriasData);
         setColores(coloresData);
-        setMarcas(marcasData);
+        setMarcas(marcasArray);
       } catch (error) {
-        toast.error("Error loading form data");
+        console.error("❌ Error en fetchData:", error);
+        toast.error("Error al cargar los datos del formulario");
       }
     };
-
+  
     fetchData();
   }, []);
-
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files) {
-      const fileArray = Array.from(files);
-      setImagenes(fileArray);
+    
+  const handleFileUpload = async (files: FileList | null) => {
+    if (!files) return;
+  
+    setIsUploading(true);
+    try {
+      const newImages = Array.from(files).map((file) => ({
+        url: "", // Se llenará después de subir la imagen
+        file,
+        previewUrl: URL.createObjectURL(file),
+      }));
+  
+      setImages((prev) => [...prev, ...newImages]);
+  
+      console.log("📸 Imágenes agregadas al estado:", newImages);
+    } catch (error) {
+      toast.error("Error al subir la imagen");
+    } finally {
+      setIsUploading(false);
     }
+  };
+  
+
+  const handleUrlAdd = () => {
+    if (imageUrl.trim()) {
+      setImages(prev => [...prev, {
+        url: imageUrl.trim(),
+        previewUrl: imageUrl.trim()
+      }]);
+      setImageUrl("");
+    }
+  };
+
+  const handleRemoveImage = (index: number) => {
+    setImages(prev => {
+      const newImages = [...prev];
+      if (newImages[index].previewUrl) {
+        URL.revokeObjectURL(newImages[index].previewUrl);
+      }
+      newImages.splice(index, 1);
+      return newImages;
+    });
   };
 
   const handleSetPrincipal = (url: string) => {
     setImagenPrincipal(url);
   };
 
-  const onSubmit = async (data: ProductFormValues) => {
-    try {
-      setLoading(true);
+  const uploadImages = async (images: ImageData[], productId: string) => {
+    const uploadedUrls = [];
   
-      // Validación inicial de datos requeridos
-      if (!data.id || !data.nombre || !data.precio) {
-        toast.error("Faltan campos requeridos");
-        return;
-      }
+    for (const image of images) {
+      if (!image.file) continue;
   
-      // Validar que haya al menos una categoría y una marca
-      if (data.categoriaIds.length === 0 || data.marcaIds.length === 0) {
-        toast.error("Debe seleccionar al menos una categoría y una marca");
-        return;
-      }
+      const formData = new FormData();
+      formData.append("file", image.file);
+      formData.append("productId", productId);
   
-      // Validar que haya imágenes para subir
-      if (imagenes.length === 0) {
-        toast.error("Debe agregar al menos una imagen");
-        return;
-      }
+      console.log("📤 Subiendo imagen:", image.file.name);
   
       try {
-        // Subir imágenes al servidor
-        console.log('Iniciando subida de imágenes...');
-        const imagePromises = imagenes.map(async (file) => {
-          const formData = new FormData();
-          formData.append('file', file);
-          formData.append('productId', data.id);
-  
-          const uploadResponse = await fetch('/api/upload', {
-            method: 'POST',
-            body: formData,
-          });
-  
-          if (!uploadResponse.ok) {
-            throw new Error(`Error al subir imagen: ${uploadResponse.statusText}`);
-          }
-  
-          const uploadData = await uploadResponse.json();
-          return uploadData.path;
-        });
-  
-        const imageUrls = await Promise.all(imagePromises);
-        console.log('URLs de imágenes subidas:', imageUrls);
-  
-        // Crear el objeto de imágenes
-        const imagenesData = imageUrls.map((url, index) => ({
-          url,
-          orden: index,
-          esPrincipal: url === imagenPrincipal,
-          altText: data.nombre
-        }));
-  
-        // Preparar el payload
-        const payload = {
-          ...data,
-          precio: parseFloat(data.precio),
-          precioDescuento: data.precioDescuento ? parseFloat(data.precioDescuento) : null,
-          imagenes: imagenesData,
-          categoriaIds: data.categoriaIds.map(Number),
-          colorIds: data.colorIds.map(Number),
-          marcaIds: data.marcaIds.map(Number)
-        };
-  
-        console.log('Payload a enviar:', JSON.stringify(payload, null, 2));
-  
-        // Enviar los datos al servidor
-        const response = await fetch("/api/products", {
+        const response = await fetch("/api/upload", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(payload),
+          body: formData,
         });
   
-        // Manejar la respuesta
         if (!response.ok) {
-          const errorText = await response.text();
-          console.error('Respuesta del servidor:', {
-            status: response.status,
-            statusText: response.statusText,
-            body: errorText
-          });
-          
-          throw new Error(
-            `Error ${response.status}: ${errorText || response.statusText || 'Error desconocido'}`
-          );
+          throw new Error(`Error al subir imagen: ${await response.text()}`);
         }
   
-        const responseData = await response.json();
-        console.log('Respuesta exitosa:', responseData);
+        const data = await response.json();
+        uploadedUrls.push({
+          url: data.path,
+          orden: uploadedUrls.length,
+          esPrincipal: image.previewUrl === imagenPrincipal,
+          altText: data.altText || "",
+        });
   
-        toast.success("Producto creado exitosamente");
-        router.push("/products");
-        router.refresh();
+        console.log("✅ Imagen subida correctamente:", data.path);
+      } catch (error) {
+        console.error("❌ Error subiendo imagen:", error);
+        toast.error("Error al subir imagen");
+      }
+    }
   
-      } catch (uploadError) {
-        console.error('Error en el proceso:', uploadError);
-        throw new Error(uploadError instanceof Error ? uploadError.message : 'Error en el proceso de subida');
+    return uploadedUrls;
+  };
+
+  const onSubmit = async (data: ProductFormValues) => {
+    console.log("🟢 Botón presionado - Ejecutando onSubmit");
+    console.log("📩 Datos del formulario:", data);
+  
+    if (!data || !data.idproducto) {
+      console.error("❌ No hay datos en el formulario o falta el ID del producto");
+      toast.error("Faltan datos del producto.");
+      return;
+    }
+  
+    try {
+      setIsUploading(true);
+  
+      // 1️⃣ Filtrar imágenes nuevas
+      const newImages = images.filter((img) => img.file);
+      let imageUrls: { url: string; orden: number; esPrincipal: boolean; altText?: string }[] = [];
+  
+      if (newImages.length > 0) {
+        imageUrls = await uploadImages(newImages, data.idproducto);
+        console.log("📸 URLs de imágenes subidas:", imageUrls);
       }
   
+      // 2️⃣ Formatear las imágenes correctamente
+      const imagenesData = images.map((img, index) => {
+        const uploadedImage = newImages.find((newImg) => newImg === img);
+        return {
+          url: uploadedImage ? imageUrls[newImages.indexOf(uploadedImage)]?.url : img.url,
+          orden: index,
+          esPrincipal: img.previewUrl === imagenPrincipal,
+          altText: data.nombreproducto || "",
+        };
+      });
+  
+      console.log("🖼️ Imágenes a enviar:", imagenesData);
+  
+      // 3️⃣ Formatear los datos finales
+      const finalData = {
+        idproducto: data.idproducto,
+        nombreproducto: data.nombreproducto,
+        lista1: parseFloat(data.lista1) || 0,
+        lista2: parseFloat(data.lista2 ?? "0") || 0,
+        porciva: data.porciva ? parseFloat(data.porciva) : null,
+        ivaincluido: data.ivaincluido || "N",
+        descripcionLarga: data.descripcionLarga || "",
+        descripcionCorta: data.descripcionCorta || "",
+        slug: data.slug,
+        destacado: Boolean(data.destacado),
+        cantidad: Number(data.cantidad) || 0,
+        categoriaIds: Array.isArray(data.categoriaIds) ? data.categoriaIds.map(id => Number(id)) : [],
+        colorIds: Array.isArray(data.colorIds) ? data.colorIds.map(id => Number(id)) : [],
+        marcaId: Array.isArray(data.marcaIds) && data.marcaIds.length > 0 ? data.marcaIds[0] : null,
+        imagenes: imagenesData,
+      };
+  
+      console.log("📤 Datos finales a enviar:", JSON.stringify(finalData, null, 2));
+  
+      // 4️⃣ Determinar si es edición o creación
+      const isEditing = !!initialData?.idproducto;
+      const endpoint = isEditing ? `/api/products/${data.idproducto}` : "/api/products";
+  
+      console.log("📌 Endpoint:", endpoint);
+  
+      // 5️⃣ Enviar datos al backend
+      const response = await fetch(endpoint, {
+        method: isEditing ? "PUT" : "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(finalData),
+      });
+  
+      console.log("📩 Respuesta del servidor:", response);
+  
+      if (!response.ok) {
+        const errorText = await response.text();
+        let parsedError;
+        try {
+          parsedError = JSON.parse(errorText);
+        } catch {
+          parsedError = { error: errorText || "Error desconocido" };
+        }
+  
+        console.error("❌ Error en la respuesta del servidor:", parsedError);
+        toast.error(parsedError.error || `Error ${response.status}: ${response.statusText}`);
+        return;
+      }
+  
+      toast.success("Producto guardado correctamente");
+      router.push("/products");
+  
     } catch (error) {
-      console.error('Error completo:', error);
-      toast.error(error instanceof Error ? error.message : "Error al crear el producto");
+      console.error("❌ Error en onSubmit:", error);
+      toast.error(error instanceof Error ? error.message : "Error al guardar el producto");
     } finally {
-      setLoading(false);
+      setIsUploading(false);
     }
   };
+  
+  
+  
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" onClick={() => router.back()}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <h2 className="text-3xl font-bold tracking-tight">
-            {initialData ? "Editar Producto" : "Crear Producto"}
-          </h2>
-        </div>
-      </div>
-
       <Card>
         <CardHeader>
           <CardTitle>Información del Producto</CardTitle>
@@ -323,39 +357,39 @@ export default function ProductForm({ initialData }: ProductFormProps) {
         <CardContent>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-              {/* ID Manual */}
+              {/* Campos básicos */}
               <FormField
+                name="idproducto"
                 control={form.control}
-                name="id"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>ID del Producto</FormLabel>
                     <FormControl>
-                      <Input placeholder="Ingrese ID " {...field} />
+                      <Input placeholder="Ingrese ID del producto" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-              {/* Información del producto */}
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="nombre"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Nombre</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Nombre del producto" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+              
+              <FormField
+                name="nombreproducto"
+                control={form.control}
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nombre del Producto</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Nombre del producto" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
+              <div className="grid grid-cols-3 gap-4">
                 <FormField
                   control={form.control}
-                  name="precio"
+                  name="lista1"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Precio</FormLabel>
@@ -363,8 +397,27 @@ export default function ProductForm({ initialData }: ProductFormProps) {
                         <Input
                           type="number"
                           step="0.01"
-                          placeholder="0.00"
-                          {...field}
+                          value={field.value ?? 0}
+                          onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="lista2"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Precio 2</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={field.value ?? 0}
+                          onChange={(e) => field.onChange(parseFloat(e.target.value) ||  0)}
                         />
                       </FormControl>
                       <FormMessage />
@@ -372,17 +425,15 @@ export default function ProductForm({ initialData }: ProductFormProps) {
                   )}
                 />
               </div>
-
-              {/* Descripción */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <FormField
+                  name="porciva"
                   control={form.control}
-                  name="descripcionCorta"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Descripción Corta</FormLabel>
+                      <FormLabel>Porcentaje IVA</FormLabel>
                       <FormControl>
-                        <Textarea placeholder="Descripción breve" {...field} rows={3} />
+                        <Input type="number" step="0.01" placeholder="0.00" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -390,13 +441,19 @@ export default function ProductForm({ initialData }: ProductFormProps) {
                 />
 
                 <FormField
+                  name="ivaincluido"
                   control={form.control}
-                  name="descripcionLarga"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Descripción Larga</FormLabel>
+                      <FormLabel>IVA Incluido</FormLabel>
                       <FormControl>
-                        <Textarea placeholder="Descripción detallada" {...field} rows={3} />
+                        <select
+                          className="w-full p-2 border rounded"
+                          {...field}
+                        >
+                          <option value="N">No</option>
+                          <option value="S">Sí</option>
+                        </select>
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -404,34 +461,60 @@ export default function ProductForm({ initialData }: ProductFormProps) {
                 />
               </div>
 
+              {/* Descripciones */}
+              <FormField
+                name="descripcionLarga"
+                control={form.control}
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Descripción Larga</FormLabel>
+                    <FormControl>
+                      <Textarea placeholder="Descripción detallada del producto" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                name="descripcionCorta"
+                control={form.control}
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Descripción Corta</FormLabel>
+                    <FormControl>
+                      <Textarea placeholder="Descripción breve del producto" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Campos adicionales */}
               <div className="grid grid-cols-2 gap-4">
                 <FormField
-                  control={form.control}
                   name="slug"
+                  control={form.control}
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Slug</FormLabel>
                       <FormControl>
-                        <Input placeholder="Slug" {...field} />
+                        <Input placeholder="url-amigable-del-producto" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-              </div>      
-
-              <div className="grid grid-cols-2 gap-4">
 
                 <FormField
-                  control={form.control}
                   name="cantidad"
+                  control={form.control}
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Cantidad</FormLabel>
                       <FormControl>
-                        <Input 
-                          type="number" 
-                          placeholder="0"
+                        <Input
+                          type="number"
                           {...field}
                           onChange={e => field.onChange(parseInt(e.target.value))}
                         />
@@ -443,104 +526,23 @@ export default function ProductForm({ initialData }: ProductFormProps) {
               </div>
 
               <FormField
+                name="destacado"
                 control={form.control}
-                name="vistaGeneral"
                 render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Vista General</FormLabel>
+                  <FormItem className="flex flex-row items-start space-x-3 space-y-0">
                     <FormControl>
-                      <Textarea 
-                        placeholder="Vista general del producto" 
-                        {...field} 
-                        rows={3}
+                      <Checkbox
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
                       />
                     </FormControl>
+                    <FormLabel>Producto Destacado</FormLabel>
                     <FormMessage />
                   </FormItem>
                 )}
               />
 
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="precioDescuento"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Precio con Descuento</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          placeholder="0.00"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <div className="grid grid-cols-3 gap-4">
-                <FormField
-                  control={form.control}
-                  name="enStock"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-row items-center space-x-2 space-y-0">
-                      <FormControl>
-                        <input
-                          type="checkbox"
-                          checked={field.value}
-                          onChange={field.onChange}
-                          className="h-4 w-4"
-                        />
-                      </FormControl>
-                      <FormLabel>En Stock</FormLabel>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="esNuevo"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-row items-center space-x-2 space-y-0">
-                      <FormControl>
-                        <input
-                          type="checkbox"
-                          checked={field.value}
-                          onChange={field.onChange}
-                          className="h-4 w-4"
-                        />
-                      </FormControl>
-                      <FormLabel>Es Nuevo</FormLabel>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="destacado"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-row items-center space-x-2 space-y-0">
-                      <FormControl>
-                        <input
-                          type="checkbox"
-                          checked={field.value}
-                          onChange={field.onChange}
-                          className="h-4 w-4"
-                        />
-                      </FormControl>
-                      <FormLabel>Destacado</FormLabel>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              {/* Categorías y colores */}
+              {/* Categorías, Marcas y Colores */}
               <FormField
                 control={form.control}
                 name="categoriaIds"
@@ -584,7 +586,7 @@ export default function ProductForm({ initialData }: ProductFormProps) {
                             >
                               <X className="h-3 w-3" />
                             </button>
-                          </Badge>
+                             </Badge>
                         );
                       })}
                     </div>
@@ -592,6 +594,7 @@ export default function ProductForm({ initialData }: ProductFormProps) {
                   </FormItem>
                 )}
               />
+
               <FormField
                 control={form.control}
                 name="marcaIds"
@@ -600,7 +603,6 @@ export default function ProductForm({ initialData }: ProductFormProps) {
                     <FormLabel>Marca</FormLabel>
                     <Select
                       onValueChange={(value) => {
-                        // Cambiamos para manejar una sola marca
                         field.onChange([parseInt(value)]);
                       }}
                     >
@@ -610,16 +612,20 @@ export default function ProductForm({ initialData }: ProductFormProps) {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {marcas.map((marca) => (
-                          <SelectItem key={marca.id} value={marca.id.toString()}>
-                            {marca.nombre}
-                          </SelectItem>
-                        ))}
+                        {Array.isArray(marcas) && marcas.length > 0 ? (
+                          marcas.map((marca) => (
+                            <SelectItem key={marca.idmarca} value={marca.idmarca.toString()}>
+                              {marca.nombre}
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <p className="text-gray-500 px-4 py-2">No hay marcas disponibles</p>
+                        )}
                       </SelectContent>
                     </Select>
                     <div className="flex flex-wrap gap-2 mt-2">
                       {field.value.map((marcaId) => {
-                        const marca = marcas.find(m => m.id === marcaId);
+                        const marca = marcas.find(m => m.idmarca === marcaId);
                         return (
                           <Badge key={marcaId} variant="secondary">
                             {marca?.nombre}
@@ -640,6 +646,7 @@ export default function ProductForm({ initialData }: ProductFormProps) {
                   </FormItem>
                 )}
               />
+
               <FormField
                 control={form.control}
                 name="colorIds"
@@ -706,92 +713,65 @@ export default function ProductForm({ initialData }: ProductFormProps) {
               />
 
               {/* Imágenes */}
-              <div>
-  <FormLabel>Imágenes</FormLabel>
-  <input 
-    type="file" 
-    multiple 
-    onChange={handleImageUpload} 
-    className="mb-4"
-  />
-  
-  {/* Imágenes existentes */}
-  <div className="grid grid-cols-4 gap-4 mb-4">
-    {existingImages.map((img, index) => (
-      <div key={`existing-${index}`} className="relative">
-        <img 
-          src={img.url} 
-          alt={img.altText || "Producto"} 
-          className="w-full h-32 object-cover rounded-md"
-        />
-        <Button
-          variant="ghost"
-          size="sm"
-          className={`absolute top-2 right-2 ${
-            img.esPrincipal ? 'bg-blue-500 text-white' : ''
-          }`}
-          onClick={() => handleSetPrincipal(img.url)}
-        >
-          {img.esPrincipal ? "Principal" : "Set Principal"}
-        </Button>
-        <Button
-          variant="destructive"
-          size="sm"
-          className="absolute bottom-2 right-2"
-          onClick={() => {
-            setExistingImages(prev => 
-              prev.filter(i => i.url !== img.url)
-            );
-          }}
-        >
-          Eliminar
-        </Button>
-      </div>
-    ))}
-  </div>
+              <div className="space-y-4">
+                <FormLabel>Imágenes</FormLabel>
+                
+                {/* URL Input */}
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="URL de la imagen"
+                    value={imageUrl}
+                    onChange={(e) => setImageUrl(e.target.value)}
+                  />
+                  <Button type="button" onClick={handleUrlAdd}>
+                    Agregar URL
+                  </Button>
+                </div>
 
-  {/* Nuevas imágenes */}
-  <div className="grid grid-cols-4 gap-4">
-    {newImages.map((img, index) => {
-      const imageUrl = URL.createObjectURL(img);
-      return (
-        <div key={`new-${index}`} className="relative">
-          <img 
-            src={imageUrl} 
-            alt="Nueva imagen" 
-            className="w-full h-32 object-cover rounded-md"
-          />
-          <Button
-            variant="ghost"
-            size="sm"
-            className={`absolute top-2 right-2 ${
-              imagenPrincipal === imageUrl ? 'bg-blue-500 text-white' : ''
-            }`}
-            onClick={() => handleSetPrincipal(imageUrl)}
-          >
-            {imagenPrincipal === imageUrl ? "Principal" : "Set Principal"}
-          </Button>
-          <Button
-            variant="destructive"
-            size="sm"
-            className="absolute bottom-2 right-2"
-            onClick={() => {
-              setNewImages(prev => 
-                prev.filter((_, i) => i !== index)
-              );
-            }}
-          >
-            Eliminar
-          </Button>
-        </div>
-                    );
-                  })}
+                {/* File Upload */}
+                <div className="flex gap-2">
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={(e) => handleFileUpload(e.target.files)}
+                  />
+                </div>
+
+                {/* Image Preview */}
+                <div className="grid grid-cols-3 gap-4 mt-4">
+                  {images.map((image, index) => (
+                    <div key={index} className="relative group">
+                      <img
+                        src={image.previewUrl}
+                        alt={`Imagen ${index + 1}`}
+                        className="w-full h-32 object-cover rounded"
+                      />
+                      <div className="absolute top-2 right-2 space-x-2 opacity-0 group-hover:opacity -100 transition-opacity">
+                        <Button
+                          type="button"
+                          variant={imagenPrincipal === image.previewUrl ? "secondary" : "ghost"}
+                          size="sm"
+                          onClick={() => handleSetPrincipal(image.previewUrl)}
+                        >
+                          {imagenPrincipal === image.previewUrl ? "Principal" : "Set Principal"}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleRemoveImage(index)}
+                        >
+                          Eliminar
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              {/* Botones */}
-              <Button type="submit" disabled={loading}>
-                {loading ? "Guardando..." : "Guardar Producto"}
+              <Button type="submit" disabled={isUploading}>
+                {isUploading ? "Guardando..." : "Guardar Producto"}
               </Button>
             </form>
           </Form>

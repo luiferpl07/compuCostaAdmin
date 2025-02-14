@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { NextRequest, NextResponse } from "next/server";
+import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
@@ -7,65 +7,57 @@ export async function GET() {
   try {
     const productos = await prisma.producto.findMany({
       include: {
-        categorias: {
-          include: {
-            categoria: true
-          }
+        categorias: { 
+          include: { 
+            categoria: true 
+          } 
         },
-        colores: {
-          include: {
-            color: true
-          }
+        colores: { 
+          include: { 
+            color: true 
+          } 
         },
-        marca: {
-          include: {
-            marca: true
-          }
+        marca: { 
+          include: { 
+            marca: true 
+          } 
         },
-        imagenes: {
-          orderBy: {
-            orden: 'asc'
-          }
-        }
-      }
+        imagenes: { 
+          orderBy: { 
+            orden: "asc" 
+          } 
+        },
+      },
     });
 
-    // Transformar los datos incluyendo todos los campos
-    const transformedProductos = productos.map(producto => ({
-      id: producto.id,
-      nombre: producto.nombre,
-      precio: producto.precio.toNumber(),
-      precioDescuento: producto.precioDescuento?.toNumber() || null,
-      destacado: producto.destacado,
-      cantidad: producto.cantidad,
-      vistaGeneral: producto.vistaGeneral,
-      enStock: producto.enStock,
-      esNuevo: producto.esNuevo,
-      descripcionCorta: producto.descripcionCorta,
-      descripcionLarga: producto.descripcionLarga,
-      slug: producto.slug,
-      puntuacionPromedio: producto.puntuacionPromedio,
-      reseñasCount: producto.reseñasCount,
-      marca: producto.marca[0]?.marca || null,
-      categorias: producto.categorias.map(pc => pc.categoria),
-      colores: producto.colores.map(pc => ({
-        id: pc.color.id,
-        nombre: pc.color.nombre,
-        codigoHex: pc.color.codigo_hex
-      })),
-      imagenes: producto.imagenes.map(img => ({
-        url: img.url,
-        altText: img.alt_text || undefined,
-        esPrincipal: img.es_principal,
-        orden: img.orden
-      }))
+    // Transformar los datos antes de enviarlos
+    const productosFormateados = productos.map(producto => ({
+      ...producto,
+      lista1: producto.lista1?.toNumber(),
+      lista2: producto.lista2?.toNumber(),
+      porciva: producto.porciva?.toNumber(),
+      categorias: producto.categorias.map(pc => pc.categoria.nombre).join(", ") || "Sin categoría",
+      colores: producto.colores.map(pc => pc.color.nombre).join(", ") || "Sin colores",
+      marca: producto.marca[0]?.marca.nombre || "Sin marca"
     }));
 
-    return NextResponse.json(transformedProductos);
+    return NextResponse.json(productosFormateados);
+
   } catch (error) {
-    console.error('Error fetching products:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Failed to fetch products';
-    return NextResponse.json({ error: errorMessage }, { status: 500 });
+    console.error("Error al obtener productos:", error);
+    return NextResponse.json(
+      { 
+        error: "Error al obtener productos",
+        details: error instanceof Error ? error.message : "Error desconocido"
+      }, 
+      { status: 500 }
+    );
+  } finally {
+    try {
+      await prisma.$disconnect();
+    } catch (disconnectError) {
+      console.error("Error al desconectar de la base de datos:", disconnectError);
+    }
   }
 }
 
@@ -73,87 +65,105 @@ export async function POST(request: NextRequest) {
   try {
     const data = await request.json();
 
-    console.log('Datos recibidos:', data);
-
-    if (!data.nombre || !data.precio) {
-      return NextResponse.json({ error: 'Nombre y precio son requeridos' }, { status: 400 });
+    // Validación de datos
+    if (!data.idproducto || !data.nombreproducto || !data.lista1 || !data.lista2) {
+      return NextResponse.json(
+        { error: "ID, Nombre y Precio son requeridos" },
+        { status: 400 }
+      );
     }
 
-    const producto = await prisma.producto.create({
+    // Asegúrate de que lista1 y lista2 sean números
+    if (typeof data.lista1 !== 'number' || typeof data.lista2 !== 'number') {
+      return NextResponse.json(
+        { error: "Lista1 y Lista2 deben ser números" },
+        { status: 400 }
+      );
+    }
+
+    const newProduct = await prisma.producto.create({
       data: {
-        id: data.id,
-        nombre: data.nombre,
-        precio: parseFloat(data.precio),
-        precioDescuento: data.precioDescuento ? parseFloat(data.precioDescuento) : null,
-        descripcionCorta: data.descripcionCorta,
-        descripcionLarga: data.descripcionLarga,
-        slug: data.slug,
-        destacado: data.destacado || false,
-        // Nuevos campos
+        idproducto: data.idproducto,
+        nombreproducto: data.nombreproducto,
+        lista1: data.lista1,
+        lista2: data.lista2,
+        porciva: data.porciva || null,
+        ivaincluido: data.ivaincluido || null,
         cantidad: data.cantidad || 0,
-        vistaGeneral: data.vistaGeneral,
-        enStock: data.enStock ?? true,
-        esNuevo: data.esNuevo || false,
-        puntuacionPromedio: 0.0,  // Valor inicial
-        reseñasCount: 0,          // Valor inicial
-        updated_at: new Date(),
-        // Relaciones
-        categorias: {
-          create: data.categoriaIds.map((id: number) => ({
-            categoria: {
-              connect: { id }
-            }
-          }))
-        },
-        colores: {
-          create: data.colorIds.map((id: number) => ({
-            color: {
-              connect: { id }
-            }
-          }))
-        },
-        marca: {
-          create: data.marcaIds.map((id: number) => ({
-            marca: {
-              connect: { id }
-            }
-          }))
-        },
-        imagenes: {
-          create: data.imagenes?.map((imagen: any) => ({
-            url: imagen.url,
-            alt_text: imagen.altText || null,
-            orden: imagen.orden,
-            es_principal: imagen.esPrincipal
-          })) || []
-        }
+        descripcionLarga: data.descripcionLarga || "",
+        descripcionCorta: data.descripcionCorta || "",
+        slug: data.slug || data.nombreproducto.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+        destacado: data.destacado || false,
       },
-      include: {
-        categorias: {
-          include: {
-            categoria: true
-          }
-        },
-        colores: {
-          include: {
-            color: true
-          }
-        },
-        marca: {
-          include: {
-            marca: true
-          }
-        },
-        imagenes: true
-      }
     });
 
-    console.log('Producto creado:', producto);
-
-    return NextResponse.json(producto, { status: 201 });
+    return NextResponse.json({
+      ...newProduct,
+      lista1: newProduct.lista1?.toNumber(),
+      porciva: newProduct.porciva?.toNumber()
+    }, { status: 201 });
   } catch (error) {
-    console.error('Error creating product:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Failed to create product';
-    return NextResponse.json({ error: errorMessage }, { status: 500 });
+    console.error("Error al crear producto:", error);
+    return NextResponse.json(
+      { 
+        error: "Error al crear producto",
+        details: error instanceof Error ? error.message : "Error desconocido"
+      }, 
+      { status: 500 }
+    );
+  } finally {
+    try {
+      await prisma.$disconnect();
+    } catch (disconnectError) {
+      console.error("Error al desconectar de la base de datos:", disconnectError);
+    }
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { idproducto } = await request.json();
+
+    if (!idproducto) {
+      return NextResponse.json(
+        { error: "ID del producto es requerido" },
+        { status: 400 }
+      );
+    }
+
+    const existingProduct = await prisma.producto.findUnique({
+      where: { idproducto },
+    });
+
+    if (!existingProduct) {
+      return NextResponse.json(
+        { error: "Producto no encontrado" },
+        { status: 404 }
+      );
+    }
+
+    await prisma.producto.delete({
+      where: { idproducto },
+    });
+
+    return NextResponse.json({ 
+      success: true,
+      message: "Producto eliminado correctamente" 
+    });
+  } catch (error) {
+    console.error("Error al eliminar producto:", error);
+    return NextResponse.json(
+      { 
+        error: "Error al eliminar producto",
+        details: error instanceof Error ? error.message : "Error desconocido"
+      }, 
+      { status: 500 }
+    );
+  } finally {
+    try {
+      await prisma.$disconnect();
+    } catch (disconnectError) {
+      console.error("Error al desconectar de la base de datos:", disconnectError);
+    }
   }
 }

@@ -1,206 +1,191 @@
-// api/products/[productId]/route.ts
-import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { NextRequest, NextResponse } from "next/server";
+import { PrismaClient, Prisma } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
+interface ImagenProducto {
+  url: string;
+  altText?: string;
+  orden: number;
+  esPrincipal: boolean;
+}
+
+
 export async function GET(
-  request: NextRequest, 
+  request: NextRequest,
   { params }: { params: { productId: string } }
 ) {
   try {
-    const { productId } = params;
     const producto = await prisma.producto.findUnique({
-      where: { id: productId },
+      where: { idproducto: params.productId },
       include: {
-        categorias: {
-          include: {
-            categoria: true
-          }
-        },
-        colores: {
-          include: {
-            color: true
-          }
-        },
-        marca: {
-          include: {
-            marca: true
-          }
-        },
-        imagenes: {
-          orderBy: {
-            orden: 'asc'
-          }
-        }
-      }
+        categorias: { include: { categoria: true } },
+        colores: { include: { color: true } },
+        marca: { include: { marca: true } },
+        imagenes: { orderBy: { orden: "asc" } },
+        reviews: true,
+      },
     });
 
     if (!producto) {
-      return NextResponse.json({ error: 'Product not found' }, { status: 404 });
+      return NextResponse.json({ error: "Producto no encontrado" }, { status: 404 });
     }
 
-    // Transformar los datos para que coincidan con la interfaz esperada
-    const transformedProducto = {
+    return NextResponse.json({
       ...producto,
-      categorias: producto.categorias.map(pc => pc.categoria),
-      colores: producto.colores.map(pc => ({
-        id: pc.color.id,
-        nombre: pc.color.nombre,
-        codigoHex: pc.color.codigo_hex
-      })),
-      marca: producto.marca[0]?.marca || null
-    };
-
-    return NextResponse.json(transformedProducto);
+      lista1: producto.lista1?.toNumber(),
+      lista2: producto.lista2?.toNumber(),
+      porciva: producto.porciva?.toNumber(),
+      categorias: producto.categorias.map(pc => pc.categoria.nombre).join(", ") || "Sin categoría",
+      colores: producto.colores.map(pc => pc.color.nombre).join(", ") || "Sin colores",
+      marca: producto.marca[0]?.marca.nombre || "Sin marca",
+      reviews: producto.reviews || [],
+    });
   } catch (error) {
-    console.error('Error fetching product detail:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Failed to fetch product details';
-    return NextResponse.json({ error: errorMessage }, { status: 500 });
+    console.error("Error obteniendo producto:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Error desconocido" },
+      { status: 500 }
+    );
   }
 }
 
+
 export async function PUT(
-  request: NextRequest, 
-  { params }: { params: { productId: string } }
+  request: NextRequest,
+  context: { params: { productId?: string } }
 ) {
   try {
-    const { productId } = params;
-    const data = await request.json();
-
-    if (!data.nombre || !data.precio) {
-      return NextResponse.json({ error: 'Nombre y precio son requeridos' }, { status: 400 });
+    const { params } = context;
+    const productId = params?.productId;
+    
+    if (!productId) {
+      console.log("❌ ID de producto no proporcionado");
+      return NextResponse.json({ error: "ID de producto no encontrado" }, { status: 400 });
     }
 
-    // Primero, eliminamos las relaciones existentes
+    let data;
+    try {
+      data = await request.json();
+      console.log("📥 Datos recibidos:", JSON.stringify(data, null, 2));
+    } catch (parseError) {
+      console.log("❌ Error parseando JSON:", parseError);
+      return NextResponse.json({ error: "Error en el formato de los datos" }, { status: 400 });
+    }
+
+    const productoExistente = await prisma.producto.findUnique({
+      where: { idproducto: productId }
+    });
+
+    if (!productoExistente) {
+      console.log("❌ Producto no encontrado:", productId);
+      return NextResponse.json({ error: "Producto no encontrado" }, { status: 404 });
+    }
+
+    // Eliminar relaciones existentes
     await prisma.$transaction([
-      prisma.productocategoria.deleteMany({
-        where: { id_producto: productId }
+      prisma.productocategoria.deleteMany({ 
+        where: { id_producto: productoExistente.id } 
       }),
-      prisma.productocolor.deleteMany({
-        where: { id_producto: productId }
+      prisma.productocolor.deleteMany({ 
+        where: { id_producto: productoExistente.id } 
       }),
-      prisma.productomarca.deleteMany({
-        where: { id_producto: productId }
+      prisma.productomarca.deleteMany({ 
+        where: { id_producto: productoExistente.id } 
       }),
-      prisma.imagenproducto.deleteMany({
-        where: { id_producto: productId }
+      prisma.imagenproducto.deleteMany({ 
+        where: { id_producto: productId } 
       })
     ]);
 
-    // Luego, actualizamos el producto con las nuevas relaciones
-    const producto = await prisma.producto.update({
-      where: { id: productId },
-      data: {
-        nombre: data.nombre,
-        precio: parseFloat(data.precio),
-        descripcionCorta: data.descripcionCorta,
-        descripcionLarga: data.descripcionLarga,
-        slug: data.slug,
-        destacado: data.destacado || false,
-        updated_at: new Date(),
-        categorias: {
-          create: data.categoriaIds.map((id: number) => ({
-            categoria: {
-              connect: { id }
-            }
-          }))
-        },
-        colores: {
-          create: data.colorIds.map((id: number) => ({
-            color: {
-              connect: { id }
-            }
-          }))
-        },
-        marca: {
-          create: data.marcaIds.map((id: number) => ({
-            marca: {
-              connect: { id }
-            }
-          }))
-        },
-        imagenes: {
-          create: data.imagenes?.map((imagen: any) => ({
-            url: imagen.url,
-            alt_text: imagen.altText || null,
-            orden: imagen.orden,
-            es_principal: imagen.esPrincipal
-          })) || []
-        }
+    const updateData: Prisma.productoUpdateInput = {
+      nombreproducto: data.nombreproducto,
+      lista1: data.lista1 ? new Prisma.Decimal(data.lista1) : new Prisma.Decimal(0),
+      lista2: data.lista2 ? new Prisma.Decimal(data.lista2) : null,
+      porciva: data.porciva ? new Prisma.Decimal(data.porciva) : null,
+      ivaincluido: data.ivaincluido ?? null,
+      descripcionCorta: data.descripcionCorta ?? "",
+      descripcionLarga: data.descripcionLarga ?? "",
+      slug: data.slug || data.nombreproducto.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+      destacado: data.destacado ?? false,
+      cantidad: data.cantidad ?? 0,
+      updated_at: new Date(),
+      categorias: {
+        create: data.categoriaIds?.map((id: number) => ({
+          categoria: { connect: { id } }
+        })) || []
       },
+      colores: {
+        create: data.colorIds?.map((id: number) => ({
+          color: { connect: { id } }
+        })) || []
+      },
+      marca: {
+        create: data.marcaId ? [{ marca: { connect: { id: data.marcaId } } }] : []
+      }
+    };
+    
+    // Si hay imágenes, las agregamos al updateData
+    if (Array.isArray(data.imagenes) && data.imagenes.length > 0) {
+      updateData.imagenes = {
+        create: data.imagenes.map((imagen: ImagenProducto, index: number) => ({
+          url: imagen.url,
+          alt_text: imagen.altText || null,
+          orden: index,
+          es_principal: imagen.esPrincipal || false
+        }))
+      };
+    }
+    const productoActualizado = await prisma.producto.update({
+      where: { idproducto: productId },
+      data: updateData,
       include: {
-        categorias: {
-          include: {
-            categoria: true
-          }
-        },
-        colores: {
-          include: {
-            color: true
-          }
-        },
-        marca: {
-          include: {
-            marca: true
-          }
-        },
+        categorias: { include: { categoria: true } },
+        colores: { include: { color: true } },
+        marca: { include: { marca: true } },
         imagenes: true
       }
     });
 
-    // Transformar la respuesta para que coincida con la interfaz esperada
     const transformedProducto = {
-      ...producto,
-      categorias: producto.categorias.map(pc => pc.categoria),
-      colores: producto.colores.map(pc => ({
+      ...productoActualizado,
+      categorias: productoActualizado.categorias?.map(pc => pc.categoria) || [],
+      colores: productoActualizado.colores?.map(pc => ({
         id: pc.color.id,
         nombre: pc.color.nombre,
         codigoHex: pc.color.codigo_hex
-      })),
-      marca: producto.marca[0]?.marca || null
+      })) || [],
+      marca: productoActualizado.marca?.[0]?.marca || null
     };
 
     return NextResponse.json(transformedProducto);
   } catch (error) {
-    console.error('Error updating product:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Failed to update product';
-    return NextResponse.json({ error: errorMessage }, { status: 500 });
+    console.error("❌ Error general en PUT:", error instanceof Error ? error.message : 'Error desconocido');
+    return NextResponse.json(
+      { 
+        error: "Error en el servidor", 
+        details: error instanceof Error ? error.message : "Error desconocido" 
+      },
+      { status: 500 }
+    );
   }
 }
 
 export async function DELETE(
-  request: NextRequest, 
+  request: NextRequest,
   { params }: { params: { productId: string } }
 ) {
   try {
-    const { productId } = params;
-    
-    // Eliminar primero las relaciones
-    await prisma.$transaction([
-      prisma.productocategoria.deleteMany({
-        where: { id_producto: productId }
-      }),
-      prisma.productocolor.deleteMany({
-        where: { id_producto: productId }
-      }),
-      prisma.productomarca.deleteMany({
-        where: { id_producto: productId }
-      }),
-      prisma.imagenproducto.deleteMany({
-        where: { id_producto: productId }
-      })
-    ]);
-
-    // Luego eliminar el producto
     await prisma.producto.delete({
-      where: { id: productId }
+      where: { idproducto: params.productId }
     });
 
-    return NextResponse.json({ message: 'Product deleted successfully' });
+    return NextResponse.json({ message: "Producto eliminado correctamente" });
   } catch (error) {
-    console.error('Error deleting product:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Failed to delete product';
-    return NextResponse.json({ error: errorMessage }, { status: 500 });
+    console.error("Error eliminando producto:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Error desconocido" },
+      { status: 500 }
+    );
   }
 }
